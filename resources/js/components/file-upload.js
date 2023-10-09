@@ -40,6 +40,7 @@ export default function fileUploadFormComponent({
     imageResizeUpscale,
     isAvatar,
     hasImageEditor,
+                                                    hasCircleCropper,
     isDownloadable,
     isOpenable,
     isPreviewable,
@@ -481,7 +482,36 @@ export default function fileUploadFormComponent({
             reader.readAsDataURL(file)
         },
 
+        getRoundedCanvas: function (sourceCanvas) {
+            let canvas = document.createElement("canvas");
+            let context = canvas.getContext("2d");
+            let width = sourceCanvas.width;
+            let height = sourceCanvas.height;
+
+            canvas.width = width;
+            canvas.height = height;
+            context.imageSmoothingEnabled = true;
+            context.drawImage(sourceCanvas, 0, 0, width, height);
+            context.globalCompositeOperation = "destination-in";
+            context.beginPath();
+            context.ellipse(
+                width / 2,
+                height / 2,
+                width / 2,
+                height / 2,
+                0,
+                0,
+                2 * Math.PI,
+            );
+            context.fill();
+            return canvas;
+
+        },
+
         saveEditor: function () {
+            let croppedCanvas;
+            let finalImage;
+
             if (isDisabled) {
                 return
             }
@@ -490,24 +520,32 @@ export default function fileUploadFormComponent({
                 return
             }
 
-            this.editor
+            croppedCanvas = this.editor
                 .getCroppedCanvas({
-                    fillColor: imageEditorEmptyFillColor ?? 'transparent',
+                    fillColor: imageEditorEmptyFillColor ?? "transparent",
                     height: imageResizeTargetHeight,
                     imageSmoothingEnabled: true,
-                    imageSmoothingQuality: 'high',
+                    imageSmoothingQuality: "high",
                     width: imageResizeTargetWidth,
-                })
-                .toBlob((croppedImage) => {
+                });
+
+            if (hasCircleCropper) {
+                finalImage = this.getRoundedCanvas(croppedCanvas);
+            } else {
+                finalImage = croppedCanvas;
+            }
+
+            finalImage.toBlob((croppedImage) => {
                     this.pond.removeFile(
                         this.pond
                             .getFiles()
                             .find(
-                                (uploadedFile) =>
-                                    uploadedFile.filename ===
-                                    this.editingFile.name,
+                                (uploadedFile) => {
+                                    return uploadedFile.filename ===
+                                        this.editingFile.name;
+                                }
                             ),
-                    )
+                    );
 
                     this.$nextTick(() => {
                         this.shouldUpdateState = false
@@ -520,18 +558,18 @@ export default function fileUploadFormComponent({
                                     {
                                         type:
                                             this.editingFile.type ===
-                                            'image/svg+xml'
-                                                ? 'image/png'
+                                            "image/svg+xml" || hasCircleCropper
+                                                ? "image/png"
                                                 : this.editingFile.type,
                                         lastModified: new Date().getTime(),
                                     },
                                 ),
                             )
                             .then(() => {
-                                this.closeEditor()
-                            })
-                    })
-                }, this.editingFile.type)
+                                this.closeEditor();
+                            });
+                    });
+            }, hasCircleCropper ? "image/png" : this.editingFile.type);
         },
 
         destroyEditor: function () {
